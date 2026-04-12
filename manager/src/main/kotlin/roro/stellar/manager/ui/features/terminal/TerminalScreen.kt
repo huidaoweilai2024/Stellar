@@ -185,7 +185,8 @@ fun TerminalScreen(
     if (state.showResultDialog) {
         ExecutionResultDialog(
             state = state,
-            onDismiss = { terminalViewModel.dismissDialog() }
+            onDismiss = { terminalViewModel.dismissDialog() },
+            terminalViewModel = terminalViewModel
         )
     }
 }
@@ -609,7 +610,8 @@ private fun QuickExecuteDialog(
 @Composable
 private fun ExecutionResultDialog(
     state: TerminalState,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    terminalViewModel: TerminalViewModel
 ) {
     val result = state.result
     val context = LocalContext.current
@@ -688,6 +690,13 @@ private fun ExecutionResultDialog(
                     shape = AppShape.shapes.dialogContent
                 ) {
                     val scrollState = rememberScrollState()
+
+                    LaunchedEffect(output) {
+                        if (state.isRunning) {
+                            scrollState.animateScrollTo(scrollState.maxValue)
+                        }
+                    }
+
                     SelectionContainer {
                         Text(
                             text = output,
@@ -705,9 +714,15 @@ private fun ExecutionResultDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
                 ) {
-                    if (!state.isRunning) {
+                    if (state.isRunning) {
+                        TextButton(
+                            onClick = { terminalViewModel.cancelExecution() }
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    } else {
                         TextButton(
                             onClick = onDismiss
                         ) {

@@ -34,6 +34,7 @@ class TerminalViewModel : ViewModel() {
     val state: StateFlow<TerminalState> = _state.asStateFlow()
 
     private var currentJob: Job? = null
+    private var currentProcess: Process? = null
 
     fun executeCommand(command: String) {
         if (command.isBlank() || _state.value.isRunning) return
@@ -53,6 +54,7 @@ class TerminalViewModel : ViewModel() {
                     null,
                     null
                 )
+                currentProcess = process
 
                 val outputLines = mutableListOf<String>()
                 val reader = BufferedReader(InputStreamReader(process.inputStream))
@@ -60,14 +62,23 @@ class TerminalViewModel : ViewModel() {
 
                 val maxStoredLines = 5000
                 val maxDisplayLines = 200
-                val updateInterval = 500L
+                var updateInterval = 50L
                 var lastUpdateTime = System.currentTimeMillis()
+                var isHighFrequency = false
 
                 reader.lineSequence().forEach { line ->
                     outputLines.add(line)
 
                     if (outputLines.size > maxStoredLines) {
                         outputLines.removeAt(0)
+                    }
+
+                    if (!isHighFrequency && outputLines.size >= 100) {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (elapsed < 1000) {
+                            isHighFrequency = true
+                            updateInterval = 500L
+                        }
                     }
 
                     val now = System.currentTimeMillis()
@@ -93,6 +104,7 @@ class TerminalViewModel : ViewModel() {
 
                 val exitCode = process.waitFor()
                 process.destroy()
+                currentProcess = null
                 val executionTime = System.currentTimeMillis() - startTime
 
                 val finalOutput = if (outputLines.size > maxStoredLines) {
@@ -112,8 +124,23 @@ class TerminalViewModel : ViewModel() {
                     )
                 )
             } catch (e: CancellationException) {
+                currentProcess?.destroy()
+                currentProcess = null
+                val executionTime = System.currentTimeMillis() - startTime
+                _state.value = _state.value.copy(
+                    isRunning = false,
+                    result = ExecutionResult(
+                        command = command,
+                        output = _state.value.currentOutput + "\n\n[Interrupted]",
+                        exitCode = -1,
+                        executionTimeMs = executionTime,
+                        isError = true
+                    )
+                )
                 throw e
             } catch (e: Exception) {
+                currentProcess?.destroy()
+                currentProcess = null
                 val executionTime = System.currentTimeMillis() - startTime
                 _state.value = _state.value.copy(
                     isRunning = false,
@@ -131,5 +158,11 @@ class TerminalViewModel : ViewModel() {
 
     fun dismissDialog() {
         _state.value = _state.value.copy(showResultDialog = false, result = null)
+    }
+
+    fun cancelExecution() {
+        currentJob?.cancel()
+        currentProcess?.destroy()
+        currentProcess = null
     }
 }
